@@ -3,6 +3,8 @@ package Test::Mock::LWP::Distilled;
 use Moo::Role;
 use Types::Standard qw(ArrayRef CodeRef Enum HashRef);
 
+use Data::Compare;
+
 # Have you updated the version number in the POD below?
 our $VERSION = '0.001';
 $VERSION = eval $VERSION;
@@ -524,7 +526,25 @@ around send_request => sub {
         };
         return $response;
     } else {
-        ...
+        my @possible_mocks = @{ $self->mocks };
+        while (@possible_mocks && $possible_mocks[0]{used}) {
+            shift @possible_mocks;
+        }
+        ### TODO: squawk if there are no mocks.
+        if (
+            Data::Compare::Compare(
+                $self->distilled_request_from_request($request),
+                $possible_mocks[0]{distilled_request}
+            )
+        )
+        {
+            $possible_mocks[0]{used}++;
+            return $self->response_from_distilled_response(
+                $possible_mocks[0]{distilled_response}
+            );
+        } else {
+            ### TODO: squawk if the mock doesn't match.
+        }
     }
 };
 
