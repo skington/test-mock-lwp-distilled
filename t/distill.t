@@ -7,6 +7,7 @@ use lib::abs 'lib';
 
 use Test::Mock::LWP::Distilled;
 
+use File::Temp;
 use HTTP::Status qw(:constants);
 use Test::Fatal;
 use Test::More import => [qw(!like)];
@@ -18,6 +19,7 @@ my $test_class = 'Simple::Mock::Class';
 subtest 'Environment variable determines default mode' => \&test_mode;
 subtest 'Record mode produces new mocks'               => \&test_record_mode;
 subtest 'Play mode uses the recorded mocks'            => \&test_play_mode;
+subtest 'We derive the mock filename'                  => \&test_filename;
 
 done_testing();
 
@@ -159,3 +161,32 @@ sub test_play_mode {
     like $exception_mismatch, qr/login/,    '...and what we expected';
     like $exception_mismatch, $re_stack_trace, 'We also include a stack trace';
 }
+
+# We decide where to read mocks to, and where to write them to, depending on
+# constructor parameters.
+
+sub test_filename {
+    # By default, the filename is derived from the calling filename.
+    my $tempdir = File::Temp::tempdir(
+        'Test-Mock-LWP-Distilled-XXXXX',
+         TMPDIR => 1, CLEANUP => 1
+    );
+    my $mock_object_from_file = $test_class->new(base_dir => $tempdir);
+    is $mock_object_from_file->mock_filename,
+        File::Spec->catfile($tempdir, 'distill-simple-mock.json'),
+        'Default: derive the file name from our temp directory and filename';
+
+    # If we say "take the name from the calling class" instead, we turn
+    # that into a directory hierarchy.
+    my $mock_object_from_class;
+    package Some::Test::Class {
+        $mock_object_from_class = $test_class->new(
+            base_dir                     => $tempdir,
+            file_name_from_calling_class => 1,
+        );
+    }
+    is $mock_object_from_class->mock_filename,
+        File::Spec->catfile($tempdir, 'Some', 'Test', 'Class-simple-mock.json'),
+        'The mock filename was derived from our temp directory and class name';
+}
+

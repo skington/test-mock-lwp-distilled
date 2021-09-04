@@ -1,11 +1,12 @@
 package Test::Mock::LWP::Distilled;
 
 use Moo::Role;
-use Types::Standard qw(ArrayRef CodeRef Enum HashRef);
+use Types::Standard qw(ArrayRef Bool CodeRef Enum HashRef);
 
 use Carp;
 use Data::Compare;
 use Data::Dumper;
+use Path::Class;
 
 # Have you updated the version number in the POD below?
 our $VERSION = '0.001';
@@ -461,6 +462,121 @@ has 'mode' => (
         $ENV{REGENERATE_MOCK_FILE} ? 'record' : 'play',
     },
 );
+
+=head3 base_dir
+
+The directory that mocks should be read from, and written to. You can pass
+this as a constructor argument, and should set it before any attempt to
+read mocks (play mode) or write mocks (record mode).
+
+=cut
+
+has 'base_dir' => (
+    is   => 'rw',
+    isa  => sub { -d shift },
+);
+
+=head3 file_name_from_calling_class
+
+Boolean. If set, we use the calling class to determine L</mock_filename>
+rather than the name of the test file.
+
+=cut
+
+has 'file_name_from_calling_class' => (
+    is => 'rw',
+    isa => Bool,
+);
+
+=head3 mock_filename
+
+The filename we'll read mocks from, and write mocks to. This is determined
+by concatenating L</base_dir> with either the version of your test file
+(default) or the name of your calling class (if you set the
+L</file_name_from_calling_class> attribute), as follows:
+
+=over
+
+=item file
+
+We take the filename of the file that built the mock object, and discard
+anything before the last directory called C<t>. So if you have code in
+C</home/joebloggs/dev/SomeRepo/t/unit/thirdparty/some-api.t>,
+we'll add to L</base_dir>, C<unit/thirdparty/some-api-I<filename_suffix>.json>.
+
+=item class
+
+We take the name of the class which built the mock object and turn it into
+a directory hierarchy. So for class C<SomeCompany::Test::ThirdParty::SomeAPI>
+we'll add to L</base_dir>,
+C<SomeCompany/Test/ThirdParty/SomeAPI-I<filename_suffix>.json>.
+
+=back
+
+=cut
+
+# We said that we'd determine the filename based on how the object was built,
+# so hook into that via BUILD, and find where our constructor was called.
+
+has ['_calling_package', '_calling_filename'] => (
+    is => 'rwp',
+);
+
+sub BUILD {
+    my ($self) = @_;
+
+    my $frame = 0;
+    my ($found_constructor, $package, $filename, $line, $subroutine);
+    frame:
+    while (!$found_constructor) {
+        ($package, $filename, $line, $subroutine) = caller($frame);
+        last frame if !$package;
+        if ($subroutine eq ref($self) . '::new') {
+            $found_constructor = 1;
+        }
+        $frame++;
+    }
+    $self->_set__calling_package($package);
+    $self->_set__calling_filename($filename);
+}
+
+has 'mock_filename' => (
+    is => 'lazy',
+);
+sub _build_mock_filename {
+    my ($self) = @_;
+
+    # We need a base directory before we can do anything.
+    $self->base_dir or Carp::confess 'No base directory provided!';
+
+    # We'll tack on any number of additional directories, and then use the
+    # last part of either the calling filename or the calling class as the
+    # leafname for the mock file, to which we'll add our class-defined suffix
+    # and a .json extension.
+    my (@additional_file_paths, $leafname);
+    if ($self->file_name_from_calling_class) {
+        my @class_name_components = split /::/, $self->_calling_package;
+        $leafname = pop @class_name_components;
+        @additional_file_paths = @class_name_components;
+    } else {
+        my $calling_file = Path::Class::File->new($self->_calling_filename);
+        my @file_components = $calling_file->components;
+        $leafname = pop @file_components;
+        while (@file_components && $file_components[-1] ne 't') {
+            unshift @additional_file_paths, pop @file_components;
+        }
+    }
+
+    # Use Path::Class to generate hopefully a platform-independent filename.
+    my $mock_directory = Path::Class::Dir->new($self->base_dir);
+    if (@additional_file_paths) {
+        $mock_directory = $mock_directory->subdir(@additional_file_paths);
+    }
+    $leafname =~ s/[.].+$//;
+    my $mock_file = Path::Class::File->new($mock_directory,
+        $leafname . '-' . $self->filename_suffix . '.json');
+    return $mock_file->stringify;
+}
 
 =head3 mocks
 
