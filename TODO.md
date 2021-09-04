@@ -5,7 +5,6 @@ here. There is no guarantee that any of this will get done, or even that I
 still think it's a good idea.
 
 * Distilled requests
-* Distilled responses: record mocks, store them, and read them
 * Get the name of the file from either the calling class or the file, to
   distinguish (a) Test::Class::Moose etc. from (b) standalone tests running
   as t/001-wossname.t

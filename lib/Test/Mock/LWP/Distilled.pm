@@ -1,7 +1,7 @@
 package Test::Mock::LWP::Distilled;
 
 use Moo::Role;
-use Types::Standard qw(Enum);
+use Types::Standard qw(ArrayRef CodeRef Enum HashRef);
 
 # Have you updated the version number in the POD below?
 our $VERSION = '0.001';
@@ -457,6 +457,76 @@ has 'mode' => (
         $ENV{REGENERATE_MOCK_FILE} ? 'record' : 'play',
     },
 );
+
+=head3 mocks
+
+An arrayref of mock hashrefs, each of which contain the keys
+C<distilled_request> and C<distilled_response>.
+
+=cut
+
+has 'mocks' => (
+    is      => 'ro',
+    isa     => ArrayRef[HashRef],
+    default => sub { [] },
+);
+
+=head2 Methods supplied
+
+=head3 send_request
+
+As per LWP::UserAgent::send_request, but:
+
+=over
+
+=item In record mode
+
+It calls the original send_request method, and records the distilled request
+and distilled response as new mocks
+
+=item In play mode
+
+It looks for the next unused mock, checks that its distilled request matches
+the distilled version of the supplied request, and if so returns a response
+generated from the distilled response in the mock. Otherwise dies with an
+exception.
+
+=back
+
+=cut
+
+# Explicitly support monkey-patching because the way around works involves
+# lexical variables that we can't get access to afterwards.
+# The presence of %Class::Method::Modifiers::MODIFIER_CACHE is
+# misleading: it doesn't include a reference to $orig, which is what we
+# want to monkey-patch, so we have to monkey-patch explicitly.
+has '_monkey_patched_send_request' => (
+    is  => 'rw',
+    isa => CodeRef,
+);
+
+around send_request => sub {
+    my ($orig, $self, $request, $arg, $size) = @_;
+
+    # For testing purposes we want to let people override the original
+    # method, but don't use this in production!
+    if ($self->_monkey_patched_send_request && $ENV{HARNESS_ACTIVE}) {
+        $orig = $self->_monkey_patched_send_request;
+    }
+
+    if ($self->mode eq 'record') {
+        my $response = $self->$orig($request, $arg, $size);
+        push @{ $self->mocks }, {
+            distilled_request  =>
+                $self->distilled_request_from_request($request),
+            distilled_response =>
+                $self->distilled_response_from_response($response),
+        };
+        return $response;
+    } else {
+        ...
+    }
+};
 
 =head1 SEE ALSO
 
