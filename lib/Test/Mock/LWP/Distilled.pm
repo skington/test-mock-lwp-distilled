@@ -1,6 +1,7 @@
 package Test::Mock::LWP::Distilled;
 
-use Moo;
+use Moo::Role;
+use Types::Standard qw(Enum);
 
 # Have you updated the version number in the POD below?
 our $VERSION = '0.001';
@@ -116,9 +117,9 @@ will record all requests made using your mock user agent object, remembering
 the distilled requests and responses in a mock file.
 
 Run your tests without that environment variable, and the mock user agent will
-distill each request made against the I<next unused mock in the file>. If it
-matches, it will produce a genuine response from the distilled version and
-return it to the calling code. If it doesn't, it dies.
+distill each request, and check it against the I<next unused mock in the file>.
+If it matches, it will produce a genuine response from the distilled version
+and return it to the calling code. If it doesn't, it dies.
 
 If, when the mock user agent goes out of scope, there are unused mocks left,
 it generates a Test::More test failure and dies, so you know something went
@@ -426,6 +427,36 @@ returned from a login attempt, you need to populate the appropriate header.
 =cut
 
 requires 'response_from_distilled_response';
+
+=head2 Attributes supplied
+
+The following attributes are provided by Test::Mock::LWP::Distilled to your
+class.
+
+=head3 mode
+
+Either C<record> or C<play>. By default determined by the environment
+variable REGENERATE_MOCK_FILE: if set, the mode is C<record>, otherwise the
+mode is C<play>.
+
+When recording, a request triggers a I<live> request to the remote website; the
+live response is returned to the calling code, and a new mock is recorded
+from the distilled request and distilled response.
+
+When playing, a request triggers a check that the next unused mock's distilled
+request is identical to the distilled version of the current request; if so,
+the mock is marked as having been used, and a response is generated from the
+distilled response in the mock.
+
+=cut
+
+has 'mode' => (
+    is  => 'rw',
+    isa => Enum [qw(record play)],
+    default => sub {
+        $ENV{REGENERATE_MOCK_FILE} ? 'record' : 'play',
+    },
+);
 
 =head1 SEE ALSO
 
