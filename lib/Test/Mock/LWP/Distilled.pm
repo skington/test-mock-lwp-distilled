@@ -3,7 +3,9 @@ package Test::Mock::LWP::Distilled;
 use Moo::Role;
 use Types::Standard qw(ArrayRef CodeRef Enum HashRef);
 
+use Carp;
 use Data::Compare;
+use Data::Dumper;
 
 # Have you updated the version number in the POD below?
 our $VERSION = '0.001';
@@ -526,24 +528,38 @@ around send_request => sub {
         };
         return $response;
     } else {
+        # Go looking for mocks we could use.
         my @possible_mocks = @{ $self->mocks };
         while (@possible_mocks && $possible_mocks[0]{used}) {
             shift @possible_mocks;
         }
-        ### TODO: squawk if there are no mocks.
-        if (
-            Data::Compare::Compare(
-                $self->distilled_request_from_request($request),
-                $possible_mocks[0]{distilled_request}
-            )
-        )
+        if (!@possible_mocks) {
+            Carp::confess('No mocks left to use');
+        }
+
+        # The first mock had better match.
+        my $distilled_request = $self->distilled_request_from_request($request);
+        if (Data::Compare::Compare(
+            $distilled_request,
+            $possible_mocks[0]{distilled_request}
+        ))
         {
             $possible_mocks[0]{used}++;
             return $self->response_from_distilled_response(
                 $possible_mocks[0]{distilled_response}
             );
         } else {
-            ### TODO: squawk if the mock doesn't match.
+            local $Data::Dumper::Indent = 1;
+            local $Data::Dumper::Sortkeys = 1;
+            local $Data::Dumper::Terse = 1;
+            Carp::confess(
+                sprintf(
+                    "Request does not match the first available mock:\n"
+                    . "Distilled request: %s\nFirst-available mock: %s\n",
+                    Dumper($distilled_request),
+                    Dumper($possible_mocks[0]{distilled_request})
+                )
+            );
         }
     }
 };

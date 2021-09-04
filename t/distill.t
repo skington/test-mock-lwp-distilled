@@ -122,5 +122,40 @@ sub test_play_mode {
             . ' also matches the first mock';
     ok $mock_object->mocks->[0]{used}, 'The first mock is still used...';
     ok $mock_object->mocks->[1]{used}, '...and now the second is also';
-    
+
+    # If we ask a third time, no dice: there are no mocks left so you can't
+    # possibly get anything useful.
+    ok my $exception_no_mocks_left
+        = exception { $mock_object->get('https://yet-another.website/login') },
+        'Trying a third time when there are no mocks left gets us an exception';
+    like $exception_no_mocks_left, qr/No mocks left to use/,
+        'The exception complains about no mocks left';
+    like $exception_no_mocks_left,
+        my $re_stack_trace = qr{
+            Test::Mock::LWP::Distilled
+            .+
+            $test_class
+            .+
+            distill[.]t
+        }xsm,
+        'We got a stack trace that mentioned useful stuff';
+
+    # Say we haven't used the last mock after all: that works again.
+    $mock_object->{mocks}[1]{used} = 0;
+    $response = $mock_object->get('https://how-many-websites-are-there/login');
+    is $response->decoded_content, 'You did that already',
+        'Marking a mock as unused lets us retry it (naughty!)';
+    ok $mock_object->{mocks}[1]{used}, 'That mock is marked as used again';
+
+    # But if it doesn't match, we complain.
+    $mock_object->{mocks}[1]{used} = 0;
+    ok my $exception_mismatch = exception {
+        $mock_object->get('https://some-random.website/do_stuff')
+    },
+        q{If the request doesn't distill to what we expected, error};
+    like $exception_mismatch, qr/does not match/,
+        q{We complain that the request and mock don't match};
+    like $exception_mismatch, qr/do_stuff/, 'We mention the request...';
+    like $exception_mismatch, qr/login/,    '...and what we expected';
+    like $exception_mismatch, $re_stack_trace, 'We also include a stack trace';
 }
