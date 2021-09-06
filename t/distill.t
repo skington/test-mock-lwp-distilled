@@ -4,9 +4,12 @@
 use strict;
 use warnings;
 use lib::abs 'lib';
+use English qw(-no_match_vars);
 
 use Test::Mock::LWP::Distilled;
 
+use Cwd qw(cwd);
+use File::Spec::Functions qw(catfile);
 use File::Temp;
 use HTTP::Status qw(:constants);
 use Test::Fatal;
@@ -20,6 +23,7 @@ subtest 'Environment variable determines default mode' => \&test_mode;
 subtest 'Record mode produces new mocks'               => \&test_record_mode;
 subtest 'Play mode uses the recorded mocks'            => \&test_play_mode;
 subtest 'We derive the mock filename'                  => \&test_filename;
+subtest 'Mocks are read from a file'                   => \&test_read_mocks;
 
 done_testing();
 
@@ -96,7 +100,8 @@ sub test_record_mode {
 
 sub test_play_mode {
     # Set up a mock object with two mocks.
-    my $mock_object = $test_class->new(mode => 'play');
+    my $mock_object = $test_class->new(mode => 'play', base_dir => cwd());
+    $mock_object->mocks;
     @{ $mock_object->mocks } = (
         {
             distilled_request  => '/login',
@@ -167,13 +172,10 @@ sub test_play_mode {
 
 sub test_filename {
     # By default, the filename is derived from the calling filename.
-    my $tempdir = File::Temp::tempdir(
-        'Test-Mock-LWP-Distilled-XXXXX',
-         TMPDIR => 1, CLEANUP => 1
-    );
+    my $tempdir = _tempdir();
     my $mock_object_from_file = $test_class->new(base_dir => $tempdir);
     is $mock_object_from_file->mock_filename,
-        File::Spec->catfile($tempdir, 'distill-simple-mock.json'),
+        catfile($tempdir, 'distill-simple-mock.json'),
         'Default: derive the file name from our temp directory and filename';
 
     # If we say "take the name from the calling class" instead, we turn
@@ -186,7 +188,134 @@ sub test_filename {
         );
     }
     is $mock_object_from_class->mock_filename,
-        File::Spec->catfile($tempdir, 'Some', 'Test', 'Class-simple-mock.json'),
+        catfile($tempdir, 'Some', 'Test', 'Class-simple-mock.json'),
         'The mock filename was derived from our temp directory and class name';
+}
+
+# We'll read (lazily) mocks from a file, but they have to look the part.
+
+sub test_read_mocks {
+    my $tempdir = _tempdir();
+
+    # If the data's not JSON, no dice.
+    my $mock_object = _mock_object_with_stored_mocks(
+        tempdir   => $tempdir,
+        mock_data => 'This is JSON, right?'
+    );
+    my $exception_not_json = exception { $mock_object->mocks };
+    ok $exception_not_json, 'Invalid JSON throws an exception...';
+    like $exception_not_json, qr/invalid JSON/i, '...a reasonable one';
+
+    # Valid JSON which isn't an array is also a problem.
+    $mock_object = _mock_object_with_stored_mocks(
+        tempdir   => $tempdir,
+        mock_data => '{"mocks": ["Yo mama", "Your hat is stupid", "etc."]}',
+    );
+    my $exception_bad_json = exception { $mock_object->mocks };
+    ok $exception_bad_json, 'JSON in the wrong format throws an exception...';
+    like $exception_bad_json, qr/Expected an arrayref of data .+ got HASH/,
+        '...which tells us what happened';
+
+    # Any mock that doesn't contain distilled_request and distilled_response
+    # is enough for the mock file to be rejected.
+    $mock_object = _mock_object_with_stored_mocks(
+        tempdir   => $tempdir,
+        mock_data => <<'SUBTLY_BAD_JSON',
+[
+    {
+        "distilled_request": "Tap, tap, is this thing on?",
+        "distilled_response": true
+    },
+    {
+        "distilled_request": "Life, the Universe and everything"
+    },
+    {
+        "distilled_response": "Tricky"
+    }
+]
+SUBTLY_BAD_JSON
+    );
+    my $exception_subtly_bad_json = exception { $mock_object->mocks };
+    ok $exception_subtly_bad_json, 'JSON which is subtly wrong also throws...';
+    like $exception_subtly_bad_json,
+        qr/distilled_request and distilled_response/,
+        '...an exception which mentions what it was expecting to find';
+    
+    # If the JSON is valid, though, the mocks work.
+    $mock_object = _mock_object_with_stored_mocks(
+        tempdir   => $tempdir,
+        mock_data => <<'JSON',
+[
+    {
+        "distilled_request": "/get-stuff",
+        "distilled_response": "Not what you expected?"
+    }
+]
+JSON
+    );
+    ok !exception { $mock_object->mocks },
+        'Reading the mocks works fine with valid data';
+
+    # And we can use them in a request.
+    my $response = $mock_object->get('https://doesnt.matter.lol/get-stuff');
+    is $response->decoded_content, 'Not what you expected?',
+        'Response matches what we put in the mock file';
+    like $mock_object->mocks,
+        [
+            {
+                distilled_request  => '/get-stuff',
+                distilled_response => 'Not what you expected?',
+                used               => 1,
+            }
+        ],
+        'That mock is indeed stored and marked as used';
+}
+
+# Supplied with a hash of arguments, creates mock object prepared to read
+# mocks from a file.
+# Arguments are:
+# * tempdir: the name of a directory to store mock data in
+# * mock_data: the raw data to store in the mock file.
+
+sub _mock_object_with_stored_mocks {
+    my (%args) = @_;
+
+    # Create a mock object...
+    my $mock_object;
+    package Some::Mock::Read::Test::Class {
+        $mock_object = $test_class->new(
+            base_dir                     => $args{tempdir},
+            file_name_from_calling_class => 1,
+            mode                         => 'play',
+        );
+    }
+
+    # ...set up a file for it to read from...
+    my $dir_to_create = $args{tempdir};
+    path:
+    for my $path (qw(Some Mock Read Test)) {
+        $dir_to_create = catfile($dir_to_create, $path);
+        next path if -d $dir_to_create;
+        mkdir $dir_to_create or die "Couldn't create $dir_to_create: $OS_ERROR";
+    }
+    my $mock_filename = catfile($dir_to_create, 'Class-simple-mock.json');
+
+    # ...and inject the raw JSON.
+    open my $fh, '>', $mock_filename
+        or die "Couldn't write $mock_filename: $OS_ERROR";
+    print $fh $args{mock_data};
+    close $fh;
+
+    return $mock_object;
+}
+
+# Returns a tempdir that will get automatically deleted when this object
+# goes out of scope.
+
+sub _tempdir {
+    File::Temp::tempdir(
+        'Test-Mock-LWP-Distilled-XXXXX',
+         TMPDIR => 1, CLEANUP => 1
+    );
 }
 

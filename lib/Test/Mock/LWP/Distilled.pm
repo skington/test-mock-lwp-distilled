@@ -1,11 +1,14 @@
 package Test::Mock::LWP::Distilled;
 
+use English qw(-no_match_vars);
+
 use Moo::Role;
 use Types::Standard qw(ArrayRef Bool CodeRef Enum HashRef);
 
 use Carp;
 use Data::Compare;
 use Data::Dumper;
+use JSON::MaybeXS;
 use Path::Class;
 
 # Have you updated the version number in the POD below?
@@ -586,10 +589,59 @@ C<distilled_request> and C<distilled_response>.
 =cut
 
 has 'mocks' => (
-    is      => 'ro',
+    is      => 'lazy',
     isa     => ArrayRef[HashRef],
-    default => sub { [] },
 );
+sub _build_mocks {
+    my ($self) = @_;
+
+    # If we're recording, we start out with empty mocks as regardless of
+    # whether there *were* mocks in a file somewhere, we're going to be
+    # replacing them.
+    if ($self->mode eq 'record') {
+        return [];
+    }
+
+    # If we don't have a mock filename, that might cause us problems later on
+    # if we try to use them, but it's not inherently a problem.
+    if (!-e $self->mock_filename) {
+        return [];
+    }
+    
+    # OK, try to read from our file...
+    my $jsonifier = JSON::MaybeXS->new(utf8 => 0);
+    open my $fh, '<:encoding(UTF-8)', $self->mock_filename
+        or die sprintf(q{Couldn't read from %s: %s},
+            $self->mock_filename, $OS_ERROR);
+
+    # ...decode it...
+    my $json;
+    { local $/ = undef; $json = <$fh>; }
+    my $json_data;
+    eval { $json_data = $jsonifier->decode($json); 1 }
+        or die sprintf('Invalid JSON? Reading from file %s gave error %s',
+            $self->mock_filename, $EVAL_ERROR);
+
+    # ...and check it looks the part.
+    if (ref($json_data) ne 'ARRAY') {
+        die sprintf('Expected an arrayref of data from %s, got %s instead',
+            $self->mock_filename, $json_data);
+    }
+    if (
+        grep {
+            ref($_) ne 'HASH'
+            || !exists $_->{distilled_request}
+            || !exists $_->{distilled_response}
+        } @$json_data
+    )
+    {
+        die sprintf('At least one of the items in the mock data from %s'
+            . ' did not contain distilled_request and distilled_response',
+            $self->mock_filename);
+    }
+
+    return $json_data;
+}
 
 =head2 Methods supplied
 
