@@ -643,6 +643,34 @@ sub _build_mocks {
     return $json_data;
 }
 
+sub DEMOLISH {
+    my ($self) = @_;
+
+    # Obviously there's nothing to be done if we don't have any mocks to
+    # record.
+    return unless $self->mode eq 'record' && @{ $self->mocks };
+
+    # Write our mocks to our chosen mock file.
+    open my $fh, '>:encoding(UTF-8)', $self->mock_filename
+        or die sprintf('Tried writing mocks to %s but failed: %s',
+            $self->mock_filename, $OS_ERROR
+        );
+    my $jsonifier = JSON::MaybeXS->new(utf8 => 0, pretty => 1, canonical => 1);
+    my $json;
+    eval { $json = $jsonifier->encode($self->mocks); 1 }
+        or die q{Couldn't encode mocks as JSON: } . $EVAL_ERROR;
+    print $fh $json or die sprintf(
+        q{Couldn't write mocks as JSON to %s: %s},
+        $self->mock_filename, $OS_ERROR
+    );
+    close $fh or die sprintf(
+        q{Baffingly, couldn't close file %s: %s},
+        $self->mock_filename, $OS_ERROR
+    );
+        
+}
+
+
 =head2 Methods supplied
 
 =head3 send_request

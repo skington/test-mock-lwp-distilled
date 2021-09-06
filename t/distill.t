@@ -8,6 +8,7 @@ use English qw(-no_match_vars);
 
 use Test::Mock::LWP::Distilled;
 
+use Capture::Tiny qw(capture);
 use Cwd qw(cwd);
 use File::Spec::Functions qw(catfile);
 use File::Temp;
@@ -24,6 +25,8 @@ subtest 'Record mode produces new mocks'               => \&test_record_mode;
 subtest 'Play mode uses the recorded mocks'            => \&test_play_mode;
 subtest 'We derive the mock filename'                  => \&test_filename;
 subtest 'Mocks are read from a file'                   => \&test_read_mocks;
+subtest 'Mocks are written to a file also'             => \&test_write_mocks;
+subtest 'Writing mocks to a file can fail'             => \&test_fail_to_write;
 
 done_testing();
 
@@ -92,6 +95,11 @@ sub test_record_mode {
             }
         ],
         'A further request gets added to the mocks';
+
+    # Further tests will check that mocks get written to a file, but for now
+    # let's not bother, so remove the mocks before our object
+    # goes out of scope.
+    @{ $mock_object->mocks } = ();
 }
 
 # When in play mode, requests use the mocks and generate a response from the
@@ -271,6 +279,119 @@ JSON
         'That mock is indeed stored and marked as used';
 }
 
+# When we record mocks, they're written to a file when the object goes out
+# of scope.
+
+sub test_write_mocks {
+    # Gear up to recording mocks.
+    my $tempdir = _tempdir();
+    my $mock_dir = _ensure_dirs_exist($tempdir, qw(Some Mock Writing Test));
+    my $mock_file = catfile($mock_dir, 'Class-simple-mock.json');
+    ok !-e $mock_file, 'The mock file does not exist before we record';
+
+    # Create a mock object...
+    my $mock_object;
+    package Some::Mock::Writing::Test::Class {
+        $mock_object = $test_class->new(
+            base_dir                     => $tempdir,
+            file_name_from_calling_class => 1,
+            mode                         => 'record',
+        );
+    }
+
+    # ...and monkey-patch the object to generate responses.
+    my $response_number;
+    $mock_object->_monkey_patched_send_request(
+        sub {
+            my ($self, $request, $arg, $size) = @_;
+
+            my $response = HTTP::Response->new;
+            $response->code(HTTP_PAYMENT_REQUIRED);
+            $response->content('Pay me #' . ++$response_number);
+            return $response;
+        }
+    );
+
+    # Send a number of requests, and destroy the mock object.
+    $mock_object->get('https://some.website/get/free/stuff');
+    $mock_object->get('https://some.other.website/free/stuff/please');
+    $mock_object->get('https://en.wikipedia.org/wiki/Entitlement#Psychology');
+    undef $mock_object;
+
+    # These mocks were written to a file.
+    ok -e $mock_file, 'There is now a mock file';
+    my $mock_file_contents;
+    open my $fh, '<', $mock_file;
+    { local $/ = undef; $mock_file_contents = <$fh> };
+    is $mock_file_contents, <<'MOCK_FILE_CONTENTS', 'Mocks were serialised';
+[
+   {
+      "distilled_request" : "/get/free/stuff",
+      "distilled_response" : "Pay me #1"
+   },
+   {
+      "distilled_request" : "/free/stuff/please",
+      "distilled_response" : "Pay me #2"
+   },
+   {
+      "distilled_request" : "/wiki/Entitlement",
+      "distilled_response" : "Pay me #3"
+   }
+]
+MOCK_FILE_CONTENTS
+}
+
+# If we try to write to our mock file and fail, that's reported.
+# Via spewing to STDERR for some reason rather than a properly-caught
+# exception, but that's good enough.
+
+sub test_fail_to_write {
+    # If the directory it wants to write to doesn't exist, that's
+    # going to cause problems.
+    my $tempdir   = _tempdir();
+    my $mock_object;
+    package Some::Class::Whose::Dirs::We::Didnt::Create {
+        $mock_object = $test_class->new(
+            base_dir                     => $tempdir,
+            file_name_from_calling_class => 1,
+            mode                         => 'record',
+        );
+    }
+    @{ $mock_object->mocks } = (
+        {
+            distilled_request  => 'woo',
+            distilled_response => 'watch me fail'
+        }
+    );
+    my ($stdout, $stderr, $exit) = capture { undef $mock_object; };
+    ok $stderr, q{We complain to STDERR if we can't write our mocks...};
+    like $stderr, qr/Tried writing mocks/, '...and we blame the file system';
+
+    # Now make sure the directory exists, but stick stuff in the mocks that
+    # can't be serialised to JSON. That also generates an error.
+    my $mock_dir  = _ensure_dirs_exist(
+        $tempdir, qw(Some Mock Failing To Write Test)
+    );
+    my $mock_file = catfile($mock_dir, 'Class-simple-mock.json');
+    package Some::Mock::Failing::To::Write::Test::Class {
+        $mock_object = $test_class->new(
+            base_dir                     => $tempdir,
+            file_name_from_calling_class => 1,
+            mode                         => 'record',
+        );
+    }
+    @{ $mock_object->mocks } = (
+        {
+            distilled_request => \'No scalarrefs in JSON',
+            distilled_response => bless { } => 'Mwahahaha::No::JSON::For::You',
+        }
+    );
+    my ($stdout, $stderr, $exit) = capture { undef $mock_object; };
+    ok $stderr, q{We die if we can't write JSON...};
+    like $stderr, qr/Couldn't encode mocks as JSON/,
+        '...and we blame JSONifying';
+}
+
 # Supplied with a hash of arguments, creates mock object prepared to read
 # mocks from a file.
 # Arguments are:
@@ -291,14 +412,8 @@ sub _mock_object_with_stored_mocks {
     }
 
     # ...set up a file for it to read from...
-    my $dir_to_create = $args{tempdir};
-    path:
-    for my $path (qw(Some Mock Read Test)) {
-        $dir_to_create = catfile($dir_to_create, $path);
-        next path if -d $dir_to_create;
-        mkdir $dir_to_create or die "Couldn't create $dir_to_create: $OS_ERROR";
-    }
-    my $mock_filename = catfile($dir_to_create, 'Class-simple-mock.json');
+    my $mock_path = _ensure_dirs_exist($args{tempdir}, qw(Some Mock Read Test));
+    my $mock_filename = catfile($mock_path, 'Class-simple-mock.json');
 
     # ...and inject the raw JSON.
     open my $fh, '>', $mock_filename
@@ -307,6 +422,22 @@ sub _mock_object_with_stored_mocks {
     close $fh;
 
     return $mock_object;
+}
+
+# Supplied with a base directory and a sequence of subdirectories, makes sure
+# that each subdirectory exists, and returns the filename of the resulting
+# directory.
+
+sub _ensure_dirs_exist {
+    my ($basedir, @subdirs) = @_;
+    my $dir_to_create = $basedir;
+    path:
+    for my $subdir (@subdirs) {
+        $dir_to_create = catfile($dir_to_create, $subdir);
+        next path if -d $dir_to_create;
+        mkdir $dir_to_create or die "Couldn't create $dir_to_create: $OS_ERROR";
+    }
+    return $dir_to_create;
 }
 
 # Returns a tempdir that will get automatically deleted when this object
