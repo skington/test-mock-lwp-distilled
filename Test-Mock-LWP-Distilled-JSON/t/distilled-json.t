@@ -9,12 +9,14 @@ use Test::More import => [qw(!like)];
 use Test2::Tools::Compare qw(like T);
 
 use HTTP::Status qw(:constants);
+use JSON::MaybeXS;
 use LWP::JSON::Tiny;
 
 my $test_class = 'Simple::JSON::Mock::Class';
 use Simple::JSON::Mock::Class;
 
 subtest 'Distill response from JSON or HTML' => \&test_distill_response;
+subtest 'Generate response from a mock'      => \&test_generate_response;
 
 done_testing();
 
@@ -97,4 +99,68 @@ HTML_BODY
     
     # Clean out the mocks to avoid them being dumped to a file.
     @{ $mock_object->mocks } = ();
+}
+
+# We can turn that distilled response into a proper response again.
+
+sub test_generate_response {
+    # Set up mocks: one HTML, one JSON.
+    my $mock_object = $test_class->new(mode => 'play');
+    @{ $mock_object->{mocks} } = (
+        {
+            distilled_request  => 'Ignored',
+            distilled_response => {
+                code            => HTTP_PAYMENT_REQUIRED,
+                content_type    => 'text/html',
+                decoded_content => '<html><title>Pay up!</title></head>'
+            }
+        },
+        {
+            distilled_request  => 'Ignored',
+            distilled_response => {
+                code         => HTTP_OK,
+                json_content => {
+                    logged_in => JSON->true,
+                    content   => {
+                        link       => 'Some article',
+                        other_link => 'Some other article',
+                    },
+                    underwhelming => 'pretty',
+                }
+            },
+        }
+    );
+
+    # The HTML response looks the part.
+    my $response_html = $mock_object->get('https://log-in-now.law');
+    like $response_html->as_string, qr{
+        ^
+        402 \s Payment \s Required \n
+        Content-Type: \s text/html \n
+        \n
+        <html><title>Pay \s up!</title></head>
+    }x, 'An HTML mock is turned into HTML';
+
+    # The Perl data structure is turned into JSON.
+    # Formatted for legibility here, but it'll be returned without any
+    # formatting.
+    my $response_json = $mock_object->get('https://are-you-happy-now.sucks');
+    like $response_json->as_string, qr{
+        ^
+        200 \s OK \n
+        Content-Type: \s application/json \n
+    }x, 'A JSON mock is returned as JSON...';
+    my $expected_json = <<'JSON';
+{
+    "content":{
+        "link":"Some article",
+        "other_link":"Some other article"
+    },
+    "logged_in":true,
+    "underwhelming":"pretty"
+}
+JSON
+    $expected_json =~ s/^\s+//mg;
+    $expected_json =~ s/\n//g;
+    is $response_json->decoded_content, $expected_json, '...the proper JSON';
 }

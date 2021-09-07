@@ -81,7 +81,12 @@ sub response_from_distilled_response {
     my $response = HTTP::Response::JSON->new;
     $response->code($distilled_response->{code});
     if ($distilled_response->{json_content}) {
-        $response->json_content($distilled_response->{json_content});
+        # HTTP::Request::JSON knows how to construct JSON from a Perl
+        # data structure, so reuse its business logic.
+        my $request = HTTP::Request::JSON->new;
+        $request->json_content($distilled_response->{json_content});
+        $response->content_type($request->content_type);
+        $response->content($request->content);
     } else {
         $response->content_type($distilled_response->{content_type});
         $response->content($distilled_response->{decoded_content});
