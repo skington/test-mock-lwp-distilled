@@ -788,7 +788,7 @@ best place to look for suggestions and feedback.
 
 =head1 COPYRIGHT
 
-FIXME TBD.
+Copyright L<Congenica Ltd.|https://www.congenica.com/> 2021.
 
 =head1 LICENSE
 
