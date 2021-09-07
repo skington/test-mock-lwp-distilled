@@ -3,9 +3,17 @@ package Test::Mock::LWP::Distilled::JSON;
 use Moo::Role;
 use LWP::JSON::Tiny;
 
+# Have you updated the version number in the POD below?
+our $VERSION = '0.001';
+$VERSION = eval $VERSION;
+
 =head1 NAME
 
 Test::Mock::LWP::Distilled::JSON - JSON support for Test::Mock::LWP::Distilled
+
+=head1 VERSION
+
+This is version 0.001.
 
 =head1 SYNOPSIS
 
