@@ -12,7 +12,7 @@ use JSON::MaybeXS;
 use Path::Class;
 
 # Have you updated the version number in the POD below?
-our $VERSION = '0.001';
+our $VERSION = '0.001_01';
 $VERSION = eval $VERSION;
 
 =head1 NAME
