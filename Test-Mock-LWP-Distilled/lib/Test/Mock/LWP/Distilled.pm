@@ -102,7 +102,7 @@ actually
  {
      "baz": "bletch",
      "foo": "bar",
-     "toto": "tata"
+     "toto": "titi"
  }
 
 Similarly, if you get JSON back from a remote service, it's probably made as
@@ -422,7 +422,7 @@ requires 'distilled_response_from_response';
 =head3 response_from_distilled_response
 
  In: $distilled_response (JSON-serialisable data)
- Out: $respone (HTTP::Response object or subclass)
+ Out: $response (HTTP::Response object or subclass)
 
 Passed the distilled response that, in a previous run of your test code when
 the environment variable REGENERATE_MOCK_FILE was set, you generated from a
