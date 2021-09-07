@@ -37,5 +37,5 @@ pm_to_blib
 pod2htm*.tmp
 
 # Ignore build directories
-Test-Mock-LWP-Distilled-*
+*/Test-Mock-LWP-Distilled-*
 
