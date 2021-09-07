@@ -34,7 +34,7 @@ This is version 0.001.
  use LWP::JSON::Tiny;
  
  # The suffix we use for our mock filename, to distinguish it from other mocks.
- sub filename_suffix { 'simple-api' }
+ sub filename_suffix { 'my-test' }
  
  # All our requests are GET requests to unique URLs.
  sub distilled_request_from_request {
@@ -67,7 +67,7 @@ This is version 0.001.
      file_name_from_calling_class => 1,
  );
  # Mocks are stored in, and fetched from,
- #/dev/test_data/mock/Some/Test-simple-api.json
+ #/dev/test_data/mock/Some/Test-my-test.json
 
 =head1 DESCRIPTION
 
@@ -106,19 +106,19 @@ actually
  }
 
 Similarly, if you get JSON back from a remote service, it's probably made as
-compact as possible so it can be squirted down the wire as efficiently as
-possible. But you can't read that as a human being, so you may as well turn
+compact as possible so it can be squirted down the wire efficiently.
+But you can't read that as a human being, so you may as well turn
 it into a Perl data structure, which will then be serialised to JSON in a nice
 pretty-printed, sorted way.
 
 This is also the place where you occult passwords or other sensitive
 information, or otherwise get rid of data that you don't care about. The end
-point is, ideally, data that matches real-life data I<as much as your code
+point is, ideally, something that matches real-life data I<as much as your code
 cares about>; a trade-off between accuracy and legibility, where you keep as
 much information as you can afford, and get rid of chatter that just gets in
 your way.
 
-=head2 How This Works
+=head2 How this works
 
 Run your tests using REGENERATE_MOCK_FILE=1 and Test::Mock::LWP::Distilled
 will record all requests made using your mock user agent object, remembering
@@ -126,12 +126,12 @@ the distilled requests and responses in a mock file.
 
 Run your tests without that environment variable, and the mock user agent will
 distill each request, and check it against the I<next unused mock in the file>.
-If it matches, it will produce a genuine response from the distilled version
-and return it to the calling code. If it doesn't, it dies.
+If it matches, it will produce a genuine-looking response from the distilled
+version and return it to the calling code. If it doesn't, it dies.
 
 If, when the mock user agent goes out of scope, there are unused mocks left,
-it generates a Test::More test failure and dies, so you know something went
-wrong. Time to regenerate those mocks and look at the diff!
+it dies, so you know something went wrong. Time to regenerate those mocks and
+look at the diff!
 
 =head2 Using Test::Mock::LWP::Distilled
 
@@ -141,7 +141,10 @@ tests.
 =head3 Setting up a mocking class
 
 Your class should be a Moo class that extends LWP::UserAgent (or a subclass of
-your choice), and uses the role Test::Mock::LWP::Distilled.
+your choice), and uses the role Test::Mock::LWP::Distilled. Have a look at
+t/lib/Simple/Mock/Class.pm in the distribution for a ridiculously cut-down
+example.
+
 You should implement the following methods, described in more detail below:
 
 =over
@@ -155,8 +158,8 @@ their mocks in similar places without one file overwriting the other.
 =item distilled_request_from_request
 
 Take a HTTP::Request object and distill just the information in it that you
-need to reliably differentiate one request from another, as per How This
-Works above.
+need to reliably differentiate one request from another, as per How this
+works above.
 
 This will be serialised to JSON in the mock file.
 
@@ -188,7 +191,7 @@ path name:
 
 =item C<base_dir>
 
-This is the root directory where your mocks live. This is an argument
+This is the base directory where your mocks live. This is an argument
 passed to the constructor.
 
 =item test name derived from your test file or class
@@ -208,19 +211,18 @@ method implemented by your user agent, and C<.json>.
 Let's assume your mock user agent is the one from the synopsis,
 My::Test::LWP::UserAgent, which says
 
- sub filename_suffix { 'simple-api' }
+ sub filename_suffix { 'my-test' }
 
-and you have a file called /dev/company/module/t/vendor/tests.t.
+and your code is in a file called /dev/company/module/t/vendor/tests.t.
 
-If you've got a simple test file called e.g.
-C</dev/company/module/t/vendor/tests.t>, you might want to say
+If you're happy that the filename is useful, you might want to say
 
  my $ua = My::Test::LWP::UserAgent->new(
     base_dir => '/dev/company/test_data',
  );
 
 and the mocks will be stored in, and read from,
-/dev/company/test_data/vendor/tests-simple-api.json
+/dev/company/test_data/vendor/tests-my-test.json
 
 If it's e.g. a Test::Class::Moose file with a proper package name,
 you might want to write something like this:
@@ -240,7 +242,7 @@ you might want to write something like this:
  }
 
 And your mocks will be stored in, and read from,
-/dev/company/test_data/Some/Test/Class/Moose/Test/Class-simple-api.json
+/dev/company/test_data/Some/Test/Class/Moose/Test/Class-my-test.json
 
 =head2 Methods you must implement
 
@@ -348,6 +350,12 @@ because you want to distinguish "I just logged in as user B and I'm allowed to
 get stuff" from "I'm no longer logged in as user A, so I can't use the old
 authentication credentials again".
 
+Ultimately, the mocks are for (a) your test code but also (b) the human being
+reviewing the tests to make sure that they make sense. They need to contain
+enough information for the tests to work, and for the reviewer to understand
+what's going on, but not so much information that the tests still work but
+the reviewer no longer understands what's going on.
+
 =cut
 
 requires 'distilled_request_from_request';
@@ -419,8 +427,8 @@ requires 'distilled_response_from_response';
 Passed the distilled response that, in a previous run of your test code when
 the environment variable REGENERATE_MOCK_FILE was set, you generated from a
 real-life HTTP::Response object (or a subclass thereof), you must return a
-HTTP::Response (or subclass thereof) that I<your calling code> will be able to
-interpret reliably.
+HTTP::Response (or subclass thereof) object that I<your calling code> will be
+able to interpret reliably.
 
 Note the emphasis! It's OK to not bother returning all sorts of e.g. date,
 crypto etc. headers if your code doesn't care about that stuff. You won't end
@@ -468,9 +476,10 @@ has 'mode' => (
 
 =head3 base_dir
 
-The directory that mocks should be read from, and written to. You can pass
-this as a constructor argument, and should set it before any attempt to
-read mocks (play mode) or write mocks (record mode).
+The directory that mocks should be read from, and written to. You can pass this
+as a constructor argument; if you set it later instead, you should make sure
+it's set before any attempt to read mocks (play mode) or write mocks (record
+mode).
 
 =cut
 
@@ -482,12 +491,13 @@ has 'base_dir' => (
 =head3 file_name_from_calling_class
 
 Boolean. If set, we use the calling class to determine L</mock_filename>
-rather than the name of the test file.
+rather than the name of the test file. You can pass this as a constructor
+argument.
 
 =cut
 
 has 'file_name_from_calling_class' => (
-    is => 'rw',
+    is  => 'rw',
     isa => Bool,
 );
 
@@ -522,7 +532,8 @@ C<SomeCompany/Test/ThirdParty/SomeAPI-I<filename_suffix>.json>.
 # so hook into that via BUILD, and find where our constructor was called.
 
 has ['_calling_package', '_calling_filename'] => (
-    is => 'rwp',
+    is       => 'rwp',
+    init_arg => undef,
 );
 
 sub BUILD {
@@ -544,7 +555,8 @@ sub BUILD {
 }
 
 has 'mock_filename' => (
-    is => 'lazy',
+    is       => 'lazy',
+    init_arg => undef,
 );
 sub _build_mock_filename {
     my ($self) = @_;
@@ -589,9 +601,11 @@ C<distilled_request> and C<distilled_response>.
 =cut
 
 has 'mocks' => (
-    is      => 'lazy',
-    isa     => ArrayRef[HashRef],
+    is       => 'lazy',
+    isa      => ArrayRef [HashRef],
+    init_arg => undef,
 );
+
 sub _build_mocks {
     my ($self) = @_;
 
@@ -669,7 +683,6 @@ sub DEMOLISH {
     );
         
 }
-
 
 =head2 Methods supplied
 

@@ -386,7 +386,7 @@ sub test_fail_to_write {
             distilled_response => bless { } => 'Mwahahaha::No::JSON::For::You',
         }
     );
-    my ($stdout, $stderr, $exit) = capture { undef $mock_object; };
+    ($stdout, $stderr, $exit) = capture { undef $mock_object; };
     ok $stderr, q{We die if we can't write JSON...};
     like $stderr, qr/Couldn't encode mocks as JSON/,
         '...and we blame JSONifying';
