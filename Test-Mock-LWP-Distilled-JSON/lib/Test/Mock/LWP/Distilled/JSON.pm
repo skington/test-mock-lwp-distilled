@@ -4,7 +4,7 @@ use Moo::Role;
 use LWP::JSON::Tiny;
 
 # Have you updated the version number in the POD below?
-our $VERSION = '0.001_01';
+our $VERSION = '0.001_02';
 $VERSION = eval $VERSION;
 
 =head1 NAME
@@ -13,7 +13,7 @@ Test::Mock::LWP::Distilled::JSON - JSON support for Test::Mock::LWP::Distilled
 
 =head1 VERSION
 
-This is version 0.001.
+This is version 0.001_02 - a developer release.
 
 =head1 SYNOPSIS
 
