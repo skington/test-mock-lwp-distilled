@@ -551,7 +551,7 @@ sub BUILD {
         $frame++;
     }
     $self->_set__calling_package($package);
-    $self->_set__calling_filename($filename);
+    $self->_set__calling_filename(Path::Class::File->new($filename)->absolute->stringify);
 }
 
 has 'mock_filename' => (

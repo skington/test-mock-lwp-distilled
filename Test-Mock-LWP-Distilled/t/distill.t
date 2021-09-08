@@ -185,6 +185,13 @@ sub test_filename {
     is $mock_object_from_file->mock_filename,
         catfile($tempdir, 'distill-simple-mock.json'),
         'Default: derive the file name from our temp directory and filename';
+    isnt $mock_object_from_file->_calling_filename, 'distill.t',
+        q{That wasn't because our idea of the calling filename was just the leafname...};
+    isnt $mock_object_from_file->_calling_filename, 't/distill.t',
+        '...or the leafname under the t directory';
+    is $mock_object_from_file->_calling_filename,
+        File::Spec->rel2abs(__FILE__),
+        '...it was in fact the absolute path of this file';
 
     # If we say "take the name from the calling class" instead, we turn
     # that into a directory hierarchy.
