@@ -686,15 +686,15 @@ sub DEMOLISH {
 
 =head2 Methods supplied
 
-=head3 send_request
+=head3 simple_request
 
-As per LWP::UserAgent::send_request, but:
+As per LWP::UserAgent::simple_request, but:
 
 =over
 
 =item In record mode
 
-It calls the original send_request method, and records the distilled request
+It calls the original simple_request method, and records the distilled request
 and distilled response as new mocks
 
 =item In play mode
@@ -713,18 +713,18 @@ exception.
 # The presence of %Class::Method::Modifiers::MODIFIER_CACHE is
 # misleading: it doesn't include a reference to $orig, which is what we
 # want to monkey-patch, so we have to monkey-patch explicitly.
-has '_monkey_patched_send_request' => (
+has '_monkey_patched_simple_request' => (
     is  => 'rw',
     isa => CodeRef,
 );
 
-around send_request => sub {
+around simple_request => sub {
     my ($orig, $self, $request, $arg, $size) = @_;
 
     # For testing purposes we want to let people override the original
     # method, but don't use this in production!
-    if ($self->_monkey_patched_send_request && $ENV{HARNESS_ACTIVE}) {
-        $orig = $self->_monkey_patched_send_request;
+    if ($self->_monkey_patched_simple_request && $ENV{HARNESS_ACTIVE}) {
+        $orig = $self->_monkey_patched_simple_request;
     }
 
     if ($self->mode eq 'record') {

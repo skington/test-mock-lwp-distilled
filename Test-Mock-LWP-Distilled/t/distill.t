@@ -56,7 +56,7 @@ sub test_record_mode {
     # Make sure that the responses relate to something in the URI *other*
     # than the path, so we can be sure this is us doing things.
     my $mock_object = $test_class->new(mode => 'record');
-    $mock_object->_monkey_patched_send_request(
+    $mock_object->_monkey_patched_simple_request(
         sub {
             my ($self, $request, $arg, $size) = @_;
 
@@ -301,7 +301,7 @@ sub test_write_mocks {
 
     # ...and monkey-patch the object to generate responses.
     my $response_number;
-    $mock_object->_monkey_patched_send_request(
+    $mock_object->_monkey_patched_simple_request(
         sub {
             my ($self, $request, $arg, $size) = @_;
 

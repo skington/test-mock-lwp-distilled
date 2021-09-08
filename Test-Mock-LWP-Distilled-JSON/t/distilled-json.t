@@ -28,13 +28,13 @@ sub test_distill_response {
     my $mock_object = $test_class->new(mode => 'record');
 
     # Valid JSON gets turned into a Perl data structure.
-    $mock_object->_monkey_patched_send_request(
-        sub {
-            my ($self, $request, $arg, $size) = @_;
-            
-            return HTTP::Response::JSON->new(
-                HTTP_NO_CONTENT, undef, ['Content-Type' => 'application/json'],
-                <<'JSON_BODY'
+    no warnings 'redefine';
+    local *LWP::UserAgent::simple_request = sub {
+        my ($self, $request, $arg, $size) = @_;
+        
+        return HTTP::Response->new(
+            HTTP_NO_CONTENT, undef, ['Content-Type' => 'application/json'],
+            <<'JSON_BODY'
 {
     "stuff": [
         "elk",
@@ -48,10 +48,12 @@ sub test_distill_response {
     "was_the_code_a_lie": "yes"
 }
 JSON_BODY
-            );
-        }
-    );
-    $mock_object->get('https://any-url-doesnt-matter.lol');
+        );
+    };
+    use warnings 'redefine';
+
+    my $response = $mock_object->get('https://any-url-doesnt-matter.lol');
+    ok $response->isa('HTTP::Response::JSON'), 'Our response was a JSON response';
     like $mock_object->mocks->[0]{distilled_response},
         {
             code         => HTTP_NO_CONTENT,
@@ -68,14 +70,14 @@ JSON_BODY
         'JSON was turned into a Perl data structure';
 
     # HTML is returned verbatim.
-    $mock_object->_monkey_patched_send_request(
-        sub {
-            my ($self, $request, $arg, $size) = @_;
-            
-            return HTTP::Response::JSON->new(
-                HTTP_INTERNAL_SERVER_ERROR, undef,
-                ['Content-Type' => 'text/html'],
-                <<'HTML_BODY'
+    no warnings 'redefine';
+    local *LWP::UserAgent::simple_request = sub {
+        my ($self, $request, $arg, $size) = @_;
+        
+        return HTTP::Response::JSON->new(
+            HTTP_INTERNAL_SERVER_ERROR, undef,
+            ['Content-Type' => 'text/html'],
+            <<'HTML_BODY'
 <html>
 <head>
 <title>Whoops</title>
@@ -85,9 +87,10 @@ JSON_BODY
 </body>
 </html>
 HTML_BODY
-            );
-        }
-    );
+        );
+    };
+    use warnings 'redefine';
+
     $mock_object->get('https://halt-and-catch-fire.lol');
     like $mock_object->mocks->[1]{distilled_response},
         {
@@ -145,6 +148,7 @@ sub test_generate_response {
     # Formatted for legibility here, but it'll be returned without any
     # formatting.
     my $response_json = $mock_object->get('https://are-you-happy-now.sucks');
+    ok $response_json->isa('HTTP::Response::JSON'), 'We got a JSON response object back';
     like $response_json->as_string, qr{
         ^
         200 \s OK \n
