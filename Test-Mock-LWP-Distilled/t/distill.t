@@ -196,12 +196,12 @@ sub test_filename {
     # If we say "take the name from the calling class" instead, we turn
     # that into a directory hierarchy.
     my $mock_object_from_class;
-    package Some::Test::Class {
-        $mock_object_from_class = $test_class->new(
-            base_dir                     => $tempdir,
-            file_name_from_calling_class => 1,
-        );
-    }
+    package Some::Test::Class;
+    $mock_object_from_class = $test_class->new(
+        base_dir                     => $tempdir,
+        file_name_from_calling_class => 1,
+    );
+    package main;
     is $mock_object_from_class->mock_filename,
         catfile($tempdir, 'Some', 'Test', 'Class-simple-mock.json'),
         'The mock filename was derived from our temp directory and class name';
@@ -298,13 +298,13 @@ sub test_write_mocks {
 
     # Create a mock object...
     my $mock_object;
-    package Some::Mock::Writing::Test::Class {
-        $mock_object = $test_class->new(
-            base_dir                     => $tempdir,
-            file_name_from_calling_class => 1,
-            mode                         => 'record',
-        );
-    }
+    package Some::Mock::Writing::Test::Class;
+    $mock_object = $test_class->new(
+        base_dir                     => $tempdir,
+        file_name_from_calling_class => 1,
+        mode                         => 'record',
+    );
+    package main;
 
     # ...and monkey-patch the object to generate responses.
     my $response_number;
@@ -357,13 +357,13 @@ sub test_fail_to_write {
     # going to cause problems.
     my $tempdir   = _tempdir();
     my $mock_object;
-    package Some::Class::Whose::Dirs::We::Didnt::Create {
-        $mock_object = $test_class->new(
-            base_dir                     => $tempdir,
-            file_name_from_calling_class => 1,
-            mode                         => 'record',
-        );
-    }
+    package Some::Class::Whose::Dirs::We::Didnt::Create;
+    $mock_object = $test_class->new(
+        base_dir                     => $tempdir,
+        file_name_from_calling_class => 1,
+        mode                         => 'record',
+    );
+    package main;
     @{ $mock_object->mocks } = (
         {
             distilled_request  => 'woo',
@@ -380,13 +380,13 @@ sub test_fail_to_write {
         $tempdir, qw(Some Mock Failing To Write Test)
     );
     my $mock_file = catfile($mock_dir, 'Class-simple-mock.json');
-    package Some::Mock::Failing::To::Write::Test::Class {
-        $mock_object = $test_class->new(
-            base_dir                     => $tempdir,
-            file_name_from_calling_class => 1,
-            mode                         => 'record',
-        );
-    }
+    package Some::Mock::Failing::To::Write::Test::Class;
+    $mock_object = $test_class->new(
+        base_dir                     => $tempdir,
+        file_name_from_calling_class => 1,
+        mode                         => 'record',
+    );
+    package main;
     @{ $mock_object->mocks } = (
         {
             distilled_request => \'No scalarrefs in JSON',
@@ -410,13 +410,13 @@ sub _mock_object_with_stored_mocks {
 
     # Create a mock object...
     my $mock_object;
-    package Some::Mock::Read::Test::Class {
-        $mock_object = $test_class->new(
-            base_dir                     => $args{tempdir},
-            file_name_from_calling_class => 1,
-            mode                         => 'play',
-        );
-    }
+    package Some::Mock::Read::Test::Class;
+    $mock_object = $test_class->new(
+        base_dir                     => $args{tempdir},
+        file_name_from_calling_class => 1,
+        mode                         => 'play',
+    );
+    package main;
 
     # ...set up a file for it to read from...
     my $mock_path = _ensure_dirs_exist($args{tempdir}, qw(Some Mock Read Test));
